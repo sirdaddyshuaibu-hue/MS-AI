@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MS AI Assistant</title>
+<style>
+body{margin:0;background:#f5f5f5;color:#222;font:16px Arial}
+header{background:#ff6b00;color:white;padding:22px;font-size:25px;font-weight:bold}
+main{max-width:650px;margin:auto;padding:18px}
+input,textarea,button{box-sizing:border-box;width:100%;padding:13px;margin:6px 0;border-radius:9px;border:1px solid #ccc;font:inherit}
+button{background:#ff6b00;color:white;border:0;font-weight:bold}
+#chat{background:white;border-radius:12px;padding:12px;min-height:240px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg{padding:10px;margin:8px 0;border-radius:9px;background:#fff0e5}
+.small{font-size:13px;color:#555}
+</style>
+</head>
+<body>
+<header>MS AI ✦</header>
+<main>
+<h2>Your AI assistant</h2>
+<p>Ask questions, learn, or get coding help.</p>
+
+<label for="key">Gemini API key</label>
+<input id="key" type="password" placeholder="Paste your API key">
+<p class="small">Use your own key. Do not share it or commit it to GitHub.</p>
+
+<div id="chat" aria-live="polite">MS AI: Assalamu alaikum! How can I help you today?</div>
+
+<textarea id="question" rows="3" placeholder="Type your message..."></textarea>
+<button id="send">Send message</button>
+<button id="voice">🎤 Speak your message</button>
+<button id="speak">🔊 Read last answer aloud</button>
+<p class="small" id="status">Ready</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let history = [];
+let lastAnswer = "";
+
+function show(role, text) {
+  const el = document.createElement("div");
+  el.className = "msg";
+  el.textContent = role + ": " + text;
+  $("chat").appendChild(el);
+  $("chat").scrollTop = $("chat").scrollHeight;
+}
+
+$("send").onclick = async () => {
+  const key = $("key").value.trim();
+  const question = $("question").value.trim();
+  if (!key || !question) {
+    $("status").textContent = "Enter your API key and a message.";
+    return;
+  }
+  $("question").value = "";
+  show("You", question);
+  history.push({role:"user",parts:[{text:question}]});
+  $("send").disabled = true;
+  $("status").textContent = "MS AI is thinking...";
+
+  try {
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      {
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-goog-api-key":key
+        },
+        body:JSON.stringify({
+          systemInstruction:{
+            parts:[{text:"You are MS AI, a helpful, respectful AI assistant. Help with everyday questions, learning, and coding. Support English and Hausa when possible. Be honest about uncertainty."}]
+          },
+          contents:history,
+          generationConfig:{maxOutputTokens:1000}
+        })
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "API request failed");
+    lastAnswer = data.candidates?.[0]?.content?.parts
+      ?.map(p => p.text || "").join("\n") || "No text response returned.";
+    history.push({role:"model",parts:[{text:lastAnswer}]});
+    show("MS AI",lastAnswer);
+    $("status").textContent = "Response received.";
+  } catch (err) {
+    history.pop();
+    show("Error",err.message);
+    $("status").textContent = "Check your connection, API key, and model access.";
+  } finally {
+    $("send").disabled = false;
+  }
+};
+
+$("question").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){
+    e.preventDefault();
+    $("send").click();
+  }
+});
+
+$("voice").onclick = () => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    $("status").textContent = "Voice input isn't supported in this browser. Try Chrome.";
+    return;
+  }
+  const recognition = new SR();
+  recognition.lang = "en-NG";
+  recognition.onresult = e => {
+    $("question").value = e.results[0][0].transcript;
+  };
+  recognition.onerror = () => {
+    $("status").textContent = "Voice recognition failed. Check microphone permission.";
+  };
+  recognition.start();
+};
+
+$("speak").onclick = () => {
+  if(!lastAnswer) return;
+  if(!("speechSynthesis" in window)){
+    $("status").textContent = "Speech output is unsupported in this browser.";
+    return;
+  }
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(lastAnswer);
+  utterance.lang = "en-NG";
+  speechSynthesis.speak(utterance);
+};
+</script>
+</body>
+</html>
